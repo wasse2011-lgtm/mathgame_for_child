@@ -45,24 +45,53 @@
 
         * { box-sizing: border-box; }
 
-        /* dvh フォールバック: 古いSafariは 100vh を使い、対応済みは 100dvh */
+        /* ガクガク防止: html にも高さを固定し -webkit-fill-available で Safari に正確な高さを伝える */
+        html {
+            height: 100%;
+            height: -webkit-fill-available;
+        }
+
         body {
             font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
             background-color: var(--bg-color);
             margin: 0;
-            padding: 10px;
-            padding-bottom: max(10px, env(safe-area-inset-bottom)); /* ホームバー対応 */
-            padding-left:  max(10px, env(safe-area-inset-left));
-            padding-right: max(10px, env(safe-area-inset-right));
+            /* ★ Dynamic Island / ノッチ対応: safe-area-inset-top を追加 */
+            padding-top:    max(10px, env(safe-area-inset-top));
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
+            padding-left:   max(10px, env(safe-area-inset-left));
+            padding-right:  max(10px, env(safe-area-inset-right));
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* 100vh フォールバック → 100dvh（iOS 15.4+ / iPadOS 15.4+） */
-            height: 100vh;
+            /* ガクガク防止: -webkit-fill-available → 100dvh → 100vh の優先順位 */
+            height: 100%;
+            height: -webkit-fill-available;
             height: 100dvh;
             overflow: hidden;
             user-select: none;
             touch-action: manipulation;
+        }
+
+        /* ========================================
+           横向きロック: 回転を促すオーバーレイ
+        ======================================== */
+        #rotate-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #667eea;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 16px;
+        }
+        #rotate-overlay .rotate-icon { font-size: 72px; animation: rotateHint 1.5s ease-in-out infinite; }
+        #rotate-overlay .rotate-text { font-size: 20px; font-weight: bold; color: #fff; text-align: center; }
+        @keyframes rotateHint {
+            0%, 100% { transform: rotate(0deg); }
+            50%      { transform: rotate(-90deg); }
+        }
+        @media (orientation: landscape) {
+            #rotate-overlay { display: flex; }
         }
 
         /* iPad で横幅を制限し中央寄せ */
@@ -525,6 +554,12 @@
     </style>
 </head>
 <body>
+
+<!-- ========== 横向きロック ========== -->
+<div id="rotate-overlay">
+    <div class="rotate-icon">📱</div>
+    <div class="rotate-text">たてむきにして<br>あそんでね！</div>
+</div>
 
 <!-- ========== スタート画面 ========== -->
 <div id="start-screen">
