@@ -1,640 +1,634 @@
 <!DOCTYPE html>
-
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>たまごゲーム</title>
 
-```
-<!-- PWA: Web App Manifest -->
-<link rel="manifest" href="manifest.json">
+    <!-- PWA: Web App Manifest -->
+    <link rel="manifest" href="manifest.json">
 
-<!-- iOS Safari ホーム画面追加用 -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="たまごゲーム">
-<link rel="apple-touch-icon" href="icons/icon-152.png">
-<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
+    <!-- iOS Safari ホーム画面追加用 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="たまごゲーム">
+    <link rel="apple-touch-icon" href="icons/icon-152.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
 
-<!-- テーマカラー（ブラウザのUIカラー） -->
-<meta name="theme-color" content="#667eea">
-<style>
-    :root {
-        --primary-color: #ff9f43;
-        --primary-dark-color: #e67e22;
-        --success-color: #2ecc71;
-        --bg-color: #f0f3f5;
-        --cell-bg: #fff;
-        --cell-border: #bdc3c7;
-        /* iPad対応: セルサイズをCSS変数で管理 */
-        --cell-size: 60px;
-        --dot-size: 45px;
-        --cell-sm: 14px;
-        --dot-sm: 10px;
-    }
-
-    /* ---- iPad / 大画面向けスケールアップ ---- */
-    @media (min-width: 768px) {
+    <!-- テーマカラー（ブラウザのUIカラー） -->
+    <meta name="theme-color" content="#667eea">
+    <style>
         :root {
-            --cell-size: 72px;
-            --dot-size: 54px;
-            --cell-sm: 18px;
-            --dot-sm: 13px;
+            --primary-color: #ff9f43;
+            --primary-dark-color: #e67e22;
+            --success-color: #2ecc71;
+            --bg-color: #f0f3f5;
+            --cell-bg: #fff;
+            --cell-border: #bdc3c7;
+            /* iPad対応: セルサイズをCSS変数で管理 */
+            --cell-size: 60px;
+            --dot-size: 45px;
+            --cell-sm: 14px;
+            --dot-sm: 10px;
         }
-    }
 
-    * { box-sizing: border-box; }
-
-    /* ガクガク防止: html にも高さを固定し -webkit-fill-available で Safari に正確な高さを伝える */
-    html {
-        height: 100%;
-        height: -webkit-fill-available;
-    }
-
-    body {
-        font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
-        background-color: var(--bg-color);
-        margin: 0;
-        /* ★ Dynamic Island / ノッチ対応: safe-area-inset-top を追加 */
-        padding-top:    max(10px, env(safe-area-inset-top));
-        padding-bottom: max(10px, env(safe-area-inset-bottom));
-        padding-left:   max(10px, env(safe-area-inset-left));
-        padding-right:  max(10px, env(safe-area-inset-right));
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        /* ガクガク防止: -webkit-fill-available → 100dvh → 100vh の優先順位 */
-        height: 100%;
-        height: -webkit-fill-available;
-        height: 100dvh;
-        overflow: hidden;
-        user-select: none;
-        touch-action: manipulation;
-    }
-
-    /* ========================================
-       回転オーバーレイ（JS でデバイス判定後に表示制御）
-    ======================================== */
-    #rotate-overlay {
-        display: none;          /* JS が .active を付けたときだけ表示 */
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: linear-gradient(160deg, #667eea 0%, #764ba2 100%);
-        z-index: 9999;
-        flex-direction: column;
-        align-items: center; justify-content: center;
-        gap: 20px;
-    }
-    #rotate-overlay.active { display: flex; }
-    #rotate-overlay .rotate-icon {
-        font-size: 80px;
-        animation: rotateHint 1.8s ease-in-out infinite;
-        display: block;
-    }
-    #rotate-overlay .rotate-text {
-        font-size: 22px; font-weight: bold; color: #fff;
-        text-align: center; line-height: 1.6;
-        text-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-    @keyframes rotateHint {
-        0%, 40%, 100% { transform: rotate(0deg); }
-        60%, 80%      { transform: rotate(90deg); }
-    }
-
-    /* ========================================
-       ゲームラッパー（縦向きデフォルト）
-    ======================================== */
-    #game-wrapper {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        max-width: 600px;
-        height: 100%;
-        align-items: stretch;
-    }
-
-    /* ========================================
-       iPad 横向きレイアウト（CSS Grid）
-       ┌──────────────┬──────────┐
-       │  status-board（全幅）   │
-       ├──────────────┼──────────┤
-       │  target-area │ choices  │
-       └──────────────┴──────────┘
-    ======================================== */
-    @media screen and (min-width: 768px) and (orientation: landscape) {
-        :root {
-            --cell-size: 58px;
-            --dot-size: 43px;
-            --cell-sm: 13px;
-            --dot-sm: 9px;
+        /* ---- iPad / 大画面向けスケールアップ ---- */
+        @media (min-width: 768px) {
+            :root {
+                --cell-size: 72px;
+                --dot-size: 54px;
+                --cell-sm: 18px;
+                --dot-sm: 13px;
+            }
         }
-        #game-wrapper {
-            display: grid;
-            grid-template-columns: 1fr 210px;
-            grid-template-rows: auto 1fr;
-            grid-template-areas:
-                "status  status"
-                "target  choices";
-            max-width: 1000px;
-            align-items: stretch;
+
+        * { box-sizing: border-box; }
+
+        /* ガクガク防止: html にも高さを固定し -webkit-fill-available で Safari に正確な高さを伝える */
+        html {
+            height: 100%;
+            height: -webkit-fill-available;
         }
-        #status-board {
-            grid-area: status;
-            width: 100%;
-        }
-        /* combo は fixed なので grid に影響しない */
-        #target-area {
-            grid-area: target;
-            /* flex:1 を上書き（grid が高さを管理する） */
-            flex: unset;
-            min-height: 0;
+
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            /* ★ Dynamic Island / ノッチ対応: safe-area-inset-top を追加 */
+            padding-top:    max(10px, env(safe-area-inset-top));
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
+            padding-left:   max(10px, env(safe-area-inset-left));
+            padding-right:  max(10px, env(safe-area-inset-right));
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
+            /* ガクガク防止: -webkit-fill-available → 100dvh → 100vh の優先順位 */
+            height: 100%;
+            height: -webkit-fill-available;
+            height: 100dvh;
+            overflow: hidden;
+            user-select: none;
+            touch-action: manipulation;
         }
-        #choices-area {
-            grid-area: choices;
-            width: auto;            /* grid が幅を管理 */
+
+        /* ========================================
+           回転オーバーレイ（JS でデバイス判定後に表示制御）
+        ======================================== */
+        #rotate-overlay {
+            display: none;          /* JS が .active を付けたときだけ表示 */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(160deg, #667eea 0%, #764ba2 100%);
+            z-index: 9999;
             flex-direction: column;
-            border-radius: 0;
-            border-top: none;
-            border-left: 2px solid #ddd;
-            padding: 14px 10px;
-            padding-right: max(10px, env(safe-area-inset-right));
+            align-items: center; justify-content: center;
+            gap: 20px;
+        }
+        #rotate-overlay.active { display: flex; }
+        #rotate-overlay .rotate-icon {
+            font-size: 80px;
+            animation: rotateHint 1.8s ease-in-out infinite;
+            display: block;
+        }
+        #rotate-overlay .rotate-text {
+            font-size: 22px; font-weight: bold; color: #fff;
+            text-align: center; line-height: 1.6;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        @keyframes rotateHint {
+            0%, 40%, 100% { transform: rotate(0deg); }
+            60%, 80%      { transform: rotate(90deg); }
+        }
+
+        /* ========================================
+           ゲームラッパー（縦向きデフォルト）
+        ======================================== */
+        #game-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 600px;
+            height: 100%;
+            align-items: stretch;
+        }
+
+        /* ========================================
+           iPad 横向きレイアウト（CSS Grid）
+           ┌──────────────┬──────────┐
+           │  status-board（全幅）   │
+           ├──────────────┼──────────┤
+           │  target-area │ choices  │
+           └──────────────┴──────────┘
+        ======================================== */
+        @media screen and (min-width: 768px) and (orientation: landscape) {
+            :root {
+                --cell-size: 58px;
+                --dot-size: 43px;
+                --cell-sm: 13px;
+                --dot-sm: 9px;
+            }
+            #game-wrapper {
+                display: grid;
+                grid-template-columns: 1fr 210px;
+                grid-template-rows: auto 1fr;
+                grid-template-areas:
+                    "status  status"
+                    "target  choices";
+                max-width: 1000px;
+                align-items: stretch;
+            }
+            #status-board {
+                grid-area: status;
+                width: 100%;
+            }
+            /* combo は fixed なので grid に影響しない */
+            #target-area {
+                grid-area: target;
+                /* flex:1 を上書き（grid が高さを管理する） */
+                flex: unset;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
+            #choices-area {
+                grid-area: choices;
+                width: auto;            /* grid が幅を管理 */
+                flex-direction: column;
+                border-radius: 0;
+                border-top: none;
+                border-left: 2px solid #ddd;
+                padding: 14px 10px;
+                padding-right: max(10px, env(safe-area-inset-right));
+                padding-bottom: max(14px, env(safe-area-inset-bottom));
+                gap: 10px;
+                justify-content: center;
+            }
+            .choice-btn {
+                max-width: none;
+                flex: 1;
+            }
+        }
+
+        /* ========================================
+           スタート画面
+        ======================================== */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(160deg, #667eea 0%, #764ba2 100%);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 900; transition: opacity 0.4s ease;
+        }
+        #start-screen.hidden { opacity: 0; pointer-events: none; }
+
+        #start-card {
+            background: #fff; border-radius: 28px;
+            padding: 32px 24px; width: 92%; max-width: 400px;
+            text-align: center;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+            animation: cardSlideIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
+        }
+        @keyframes cardSlideIn {
+            0%   { transform: scale(0.8) translateY(30px); opacity: 0; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        #start-eggs    { font-size: 48px; margin-bottom: 4px; }
+        #start-title   { font-size: 28px; font-weight: bold; color: #333; margin-bottom: 4px; }
+        #start-subtitle{ font-size: 15px; color: #999; margin-bottom: 22px; }
+
+        #save-preview {
+            background: #f8f9fa; border: 2px solid #eee;
+            border-radius: 14px; padding: 12px 16px;
+            margin-bottom: 18px; text-align: left;
+            display: none;
+        }
+        #save-preview.show { display: block; }
+        #save-preview .preview-title {
+            font-size: 11px; color: #aaa; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+        }
+        #save-preview .preview-info  { font-size: 18px; font-weight: bold; color: #333; }
+        #save-preview .preview-farm  {
+            font-size: 20px; margin-top: 4px; letter-spacing: 2px;
+            max-height: 50px; overflow: hidden;
+        }
+
+        .start-btn {
+            width: 100%; padding: 16px; border: none; border-radius: 16px;
+            font-size: 20px; font-weight: bold; cursor: pointer;
+            margin-bottom: 10px;
+            transition: transform 0.1s, box-shadow 0.1s, background 0.15s;
+            box-shadow: 0 5px 0 rgba(0,0,0,0.18);
+        }
+        .start-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.18); }
+        .start-btn:last-child { margin-bottom: 0; }
+        .start-btn.primary   { background: var(--primary-color); color: #fff; }
+        .start-btn.secondary { background: #ecf0f1; color: #7f8c8d; font-size: 16px; }
+
+        /* ========================================
+           ステータスボード
+        ======================================== */
+        #status-board {
+            width: 100%; background: #fff; border-radius: 12px;
+            padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; gap: 8px; z-index: 10;
+            flex-shrink: 0; /* 圧縮させない */
+        }
+        #level-exp-area {
+            display: flex; align-items: center; gap: 10px; position: relative;
+        }
+        #level-display { font-size: 20px; font-weight: bold; color: #333; min-width: 80px; }
+        #exp-bar-container {
+            flex-grow: 1; height: 12px; background: #eee; border-radius: 6px;
+            overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 25px;
+        }
+        #exp-bar-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #2ecc71, #27ae60);
+            transition: width 0.3s ease-out;
+        }
+        #egg-track {
+            position: absolute; top: 0; left: 90px; right: 0; height: 20px;
+        }
+        #current-egg {
+            font-size: 30px; position: absolute; bottom: -5px; left: 0%;
+            transition: left 0.3s ease-out;
+            transform: translateX(-50%);
+            animation: eggIdle 2s infinite ease-in-out;
+        }
+
+        /* 養鶏場 */
+        #farm-area {
+            display: flex; flex-wrap: wrap; gap: 5px;
+            min-height: 38px; max-height: 76px; overflow-y: auto;
+            padding: 4px; background: #fdfbf7;
+            border: 2px dashed #dcdde1; border-radius: 8px;
+        }
+        .chicken {
+            font-size: 22px; cursor: pointer; display: inline-block;
+            transition: transform 0.15s;
+            animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
+            /* iPad タップ領域確保 */
+            min-width: 36px; min-height: 36px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .chicken-peck { animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275), chickenPeck 3s 0.5s infinite; }
+        .chicken-flap { animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275), chickenFlap 4s 0.5s infinite; }
+
+        /* ========================================
+           セーブ・ロードバー
+        ======================================== */
+        #save-load-bar {
+            display: flex; gap: 6px; justify-content: flex-end; align-items: center;
+            flex-wrap: wrap; /* 狭い画面でも折り返し可 */
+        }
+        .sl-btn {
+            background: #f8f9fa; border: 2px solid #ddd; border-radius: 10px;
+            padding: 7px 12px; font-size: 13px; font-weight: bold; cursor: pointer;
+            color: #666; transition: background 0.15s, transform 0.1s, border-color 0.15s;
+            display: flex; align-items: center; gap: 3px; white-space: nowrap;
+            /* iPad: タップ領域を確保 */
+            min-height: 36px;
+        }
+        .sl-btn:active { transform: scale(0.93); }
+        .sl-btn.save-btn  { border-color: #3498db; color: #3498db; }
+        .sl-btn.save-btn:active  { background: #eaf4fd; }
+        .sl-btn.title-btn { border-color: #9b59b6; color: #9b59b6; }
+        .sl-btn.title-btn:active { background: #f5eef8; }
+        .sl-btn.reset-btn { border-color: #e74c3c; color: #e74c3c; }
+        .sl-btn.reset-btn:active { background: #fdedec; }
+        .sl-btn.zukan-btn { border-color: #f39c12; color: #f39c12; }
+        .sl-btn.zukan-btn:active { background: #fef9e7; }
+        .sl-btn.saved {
+            background: #eafaf1 !important; border-color: #2ecc71 !important;
+            color: #27ae60 !important; transition: none;
+        }
+
+        /* ========================================
+           アニメーション
+        ======================================== */
+        @keyframes popIn {
+            0%   { transform: scale(0) rotate(-10deg); }
+            100% { transform: scale(1); }
+        }
+        @keyframes hatchShake {
+            0%, 100% { transform: translateX(-50%) rotate(0deg); }
+            25%  { transform: translateX(-50%) rotate(-18deg); }
+            75%  { transform: translateX(-50%) rotate(18deg); }
+        }
+        .hatching { animation: hatchShake 0.15s infinite !important; }
+        @keyframes eggIdle {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50%  { transform: translateX(-50%) scale(1.06); }
+        }
+        @keyframes chickenPeck {
+            0%, 80%, 100% { transform: rotate(0deg); }
+            85%  { transform: rotate(15deg); }
+            90%  { transform: rotate(-10deg); }
+            95%  { transform: rotate(5deg); }
+        }
+        @keyframes chickenFlap {
+            0%, 90%, 100% { transform: scaleX(1); }
+            92%  { transform: scaleX(1.2) translateY(-2px); }
+            94%  { transform: scaleX(0.9); }
+            96%  { transform: scaleX(1.1); }
+        }
+
+        /* ========================================
+           コンボ
+        ======================================== */
+        #combo-area {
+            position: fixed; top: 160px; right: 20px;
+            font-size: 24px; font-weight: bold; color: #e74c3c;
+            opacity: 0; transition: opacity 0.3s, transform 0.3s;
+            text-shadow: 2px 2px 0 #fff; pointer-events: none; z-index: 5;
+        }
+        #combo-area.show { opacity: 1; transform: scale(1.1); }
+
+        /* EXPポップアップ */
+        .exp-popup {
+            position: fixed; font-size: 20px; font-weight: bold;
+            color: var(--success-color); text-shadow: 2px 2px 0 #fff;
+            pointer-events: none; z-index: 100;
+            animation: expPopupAnim 1s ease-out forwards;
+        }
+        .combo-exp-popup { color: #e74c3c; font-size: 18px; }
+        .wrong-exp-popup { color: #999; font-size: 16px; }
+        @keyframes expPopupAnim {
+            0%   { transform: translateY(0); opacity: 0; }
+            10%  { transform: translateY(-20px); opacity: 1; }
+            80%  { transform: translateY(-30px); opacity: 1; }
+            100% { transform: translateY(-40px); opacity: 0; }
+        }
+
+        /* ========================================
+           問題エリア — flex-grow で余白を均等に使う
+        ======================================== */
+        #target-area {
+            margin: 8px 0;
+            text-align: center;
+            flex: 1 1 0;           /* 残スペースをすべて使う */
+            min-height: 0;         /* Safari の flex バグ回避 */
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+        .number-display { font-size: 80px; font-weight: bold; color: #333; margin-bottom: 5px; }
+        #target-frame-container.complete { animation: frameComplete 0.4s ease-out; }
+        @keyframes frameComplete {
+            0%, 100% { transform: scale(1); }
+            50%  { transform: scale(1.15) rotate(5deg); }
+        }
+        .ten-frame {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+            background-color: var(--cell-border); padding: 6px; border-radius: 12px;
+        }
+        .cell {
+            width: var(--cell-size); height: var(--cell-size);
+            background-color: var(--cell-bg);
+            border-radius: 8px; display: flex; justify-content: center; align-items: center;
+        }
+        .dot {
+            width: var(--dot-size); height: var(--dot-size); border-radius: 50%;
+            background: radial-gradient(circle at 15px 15px, var(--primary-color), var(--primary-dark-color));
+            box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+            transition: opacity 0.3s ease, background 0.3s ease;
+        }
+        .dot.empty        { opacity: 0; }
+        .dot.target-empty { background: var(--cell-bg); border: 4px dashed var(--cell-border); box-shadow: none; }
+        .dot.complete-anim{ background: radial-gradient(circle at 15px 15px, #fff29e, #f1c40f); }
+
+        /* ========================================
+           選択肢 — flex-shrink: 0 で押し出されないよう固定
+        ======================================== */
+        #choices-area {
+            display: flex; gap: 16px; justify-content: center;
+            padding: 14px;
+            width: 100%;
+            background: rgba(255,255,255,0.7);
+            border-radius: 20px 20px 0 0; border-top: 2px solid #ddd;
+            flex-shrink: 0;
+            /* iPad ホームバー上の余白 */
             padding-bottom: max(14px, env(safe-area-inset-bottom));
-            gap: 10px;
-            justify-content: center;
         }
         .choice-btn {
-            max-width: none;
-            flex: 1;
+            background-color: #fff; border: 4px solid var(--cell-border);
+            border-radius: 16px; padding: 15px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center;
+            transition: transform 0.1s, border-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 6px 0 var(--cell-border);
+            /* iPad: フレキシブルに横幅を取る */
+            flex: 1; max-width: 160px;
         }
-    }
+        .choice-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--cell-border); }
+        .choice-btn.selected-wrong {
+            animation: choiceWrong 0.4s;
+            border-color: #e74c3c !important; box-shadow: 0 6px 0 #e74c3c !important;
+        }
+        .choice-btn.correct-highlight {
+            border-color: #2ecc71 !important; box-shadow: 0 6px 0 #27ae60 !important;
+            background: #eafaf1 !important;
+            animation: correctPulse 0.5s ease-in-out infinite alternate !important;
+        }
+        @keyframes choiceWrong {
+            0%, 100% { transform: translateX(0); }
+            25%  { transform: translateX(-6px); }
+            75%  { transform: translateX(6px); }
+        }
+        @keyframes correctPulse {
+            0%   { transform: scale(1); }
+            100% { transform: scale(1.06); }
+        }
+        .choice-btn .number-display { font-size: 50px; }
+        .choice-btn .ten-frame  { gap: 2px; padding: 2px; border-radius: 4px; border: none; margin-top: 5px; }
+        .choice-btn .cell       { width: var(--cell-sm); height: var(--cell-sm); border-radius: 2px; }
+        .choice-btn .dot        { width: var(--dot-sm); height: var(--dot-sm); }
 
-    /* ========================================
-       スタート画面
-    ======================================== */
-    #start-screen {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: linear-gradient(160deg, #667eea 0%, #764ba2 100%);
-        display: flex; align-items: center; justify-content: center;
-        z-index: 900; transition: opacity 0.4s ease;
-    }
-    #start-screen.hidden { opacity: 0; pointer-events: none; }
+        /* 飛翔ドット */
+        .flying-dot {
+            position: fixed; border-radius: 50%;
+            background: radial-gradient(circle at 15px 15px, var(--primary-color), var(--primary-dark-color));
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 100; pointer-events: none;
+        }
 
-    #start-card {
-        background: #fff; border-radius: 28px;
-        padding: 32px 24px; width: 92%; max-width: 400px;
-        text-align: center;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.35);
-        animation: cardSlideIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
-    }
-    @keyframes cardSlideIn {
-        0%   { transform: scale(0.8) translateY(30px); opacity: 0; }
-        100% { transform: scale(1) translateY(0); opacity: 1; }
-    }
+        /* ========================================
+           孵化オーバーレイ
+        ======================================== */
+        #hatch-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.55);
+            z-index: 500; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        #hatch-overlay.show    { opacity: 1; pointer-events: all; }
+        #hatch-chicken-display { font-size: 110px; }
+        #hatch-chicken-display.bounce {
+            animation: hatchChickenBounce 0.6s cubic-bezier(0.175,0.885,0.32,1.275) forwards;
+        }
+        #hatch-chicken-name {
+            font-size: 26px; font-weight: bold; color: #fff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.6); margin-top: 12px;
+        }
+        #hatch-rarity { font-size: 22px; color: #f1c40f; margin-top: 6px; letter-spacing: 4px; }
+        @keyframes hatchChickenBounce {
+            0%   { transform: scale(0) rotate(-20deg); }
+            60%  { transform: scale(1.25) rotate(10deg); }
+            80%  { transform: scale(0.9) rotate(-5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
 
-    #start-eggs    { font-size: 48px; margin-bottom: 4px; }
-    #start-title   { font-size: 28px; font-weight: bold; color: #333; margin-bottom: 4px; }
-    #start-subtitle{ font-size: 15px; color: #999; margin-bottom: 22px; }
+        /* 吹き出し */
+        .speech-bubble {
+            position: fixed; background: #fff; border: 2px solid #555;
+            border-radius: 12px; padding: 4px 10px; font-size: 16px;
+            pointer-events: none; z-index: 300;
+            animation: bubbleAnim 1.2s ease-out forwards;
+        }
+        @keyframes bubbleAnim {
+            0%   { transform: translateY(0) scale(0); opacity: 1; }
+            20%  { transform: translateY(-12px) scale(1); opacity: 1; }
+            80%  { transform: translateY(-22px); opacity: 1; }
+            100% { transform: translateY(-32px); opacity: 0; }
+        }
 
-    #save-preview {
-        background: #f8f9fa; border: 2px solid #eee;
-        border-radius: 14px; padding: 12px 16px;
-        margin-bottom: 18px; text-align: left;
-        display: none;
-    }
-    #save-preview.show { display: block; }
-    #save-preview .preview-title {
-        font-size: 11px; color: #aaa; font-weight: bold;
-        text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
-    }
-    #save-preview .preview-info  { font-size: 18px; font-weight: bold; color: #333; }
-    #save-preview .preview-farm  {
-        font-size: 20px; margin-top: 4px; letter-spacing: 2px;
-        max-height: 50px; overflow: hidden;
-    }
+        /* ========================================
+           図鑑オーバーレイ
+        ======================================== */
+        #zukan-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex; align-items: flex-end; justify-content: center;
+            z-index: 850; opacity: 0; pointer-events: none;
+            transition: opacity 0.25s;
+        }
+        #zukan-overlay.show { opacity: 1; pointer-events: all; }
 
-    .start-btn {
-        width: 100%; padding: 16px; border: none; border-radius: 16px;
-        font-size: 20px; font-weight: bold; cursor: pointer;
-        margin-bottom: 10px;
-        transition: transform 0.1s, box-shadow 0.1s, background 0.15s;
-        box-shadow: 0 5px 0 rgba(0,0,0,0.18);
-    }
-    .start-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.18); }
-    .start-btn:last-child { margin-bottom: 0; }
-    .start-btn.primary   { background: var(--primary-color); color: #fff; }
-    .start-btn.secondary { background: #ecf0f1; color: #7f8c8d; font-size: 16px; }
+        #zukan-panel {
+            background: #fff; border-radius: 24px 24px 0 0;
+            width: 100%; max-width: 600px; max-height: 85vh;
+            display: flex; flex-direction: column;
+            box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275);
+            /* iPad ホームバー対応 */
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        #zukan-overlay.show #zukan-panel { transform: translateY(0); }
 
-    /* ========================================
-       ステータスボード
-    ======================================== */
-    #status-board {
-        width: 100%; background: #fff; border-radius: 12px;
-        padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        display: flex; flex-direction: column; gap: 8px; z-index: 10;
-        flex-shrink: 0; /* 圧縮させない */
-    }
-    #level-exp-area {
-        display: flex; align-items: center; gap: 10px; position: relative;
-    }
-    #level-display { font-size: 20px; font-weight: bold; color: #333; min-width: 80px; }
-    #exp-bar-container {
-        flex-grow: 1; height: 12px; background: #eee; border-radius: 6px;
-        overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        margin-top: 25px;
-    }
-    #exp-bar-fill {
-        height: 100%; width: 0%;
-        background: linear-gradient(90deg, #2ecc71, #27ae60);
-        transition: width 0.3s ease-out;
-    }
-    #egg-track {
-        position: absolute; top: 0; left: 90px; right: 0; height: 20px;
-    }
-    #current-egg {
-        font-size: 30px; position: absolute; bottom: -5px; left: 0%;
-        transition: left 0.3s ease-out;
-        transform: translateX(-50%);
-        animation: eggIdle 2s infinite ease-in-out;
-    }
+        #zukan-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px 12px; border-bottom: 2px solid #f0f0f0;
+            flex-shrink: 0;
+        }
+        #zukan-title { font-size: 20px; font-weight: bold; color: #333; }
+        #zukan-count { font-size: 13px; color: #999; }
+        #zukan-close {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: #f0f0f0; border: none; cursor: pointer;
+            font-size: 18px; display: flex; align-items: center; justify-content: center;
+            color: #777; transition: background 0.15s;
+        }
+        #zukan-close:active { background: #ddd; }
 
-    /* 養鶏場 */
-    #farm-area {
-        display: flex; flex-wrap: wrap; gap: 5px;
-        min-height: 38px; max-height: 76px; overflow-y: auto;
-        padding: 4px; background: #fdfbf7;
-        border: 2px dashed #dcdde1; border-radius: 8px;
-    }
-    .chicken {
-        font-size: 22px; cursor: pointer; display: inline-block;
-        transition: transform 0.15s;
-        animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
-        /* iPad タップ領域確保 */
-        min-width: 36px; min-height: 36px;
-        display: flex; align-items: center; justify-content: center;
-    }
-    .chicken-peck { animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275), chickenPeck 3s 0.5s infinite; }
-    .chicken-flap { animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275), chickenFlap 4s 0.5s infinite; }
+        #zukan-body { overflow-y: auto; padding: 12px 16px 24px; flex: 1; }
 
-    /* ========================================
-       セーブ・ロードバー
-    ======================================== */
-    #save-load-bar {
-        display: flex; gap: 6px; justify-content: flex-end; align-items: center;
-        flex-wrap: wrap; /* 狭い画面でも折り返し可 */
-    }
-    .sl-btn {
-        background: #f8f9fa; border: 2px solid #ddd; border-radius: 10px;
-        padding: 7px 12px; font-size: 13px; font-weight: bold; cursor: pointer;
-        color: #666; transition: background 0.15s, transform 0.1s, border-color 0.15s;
-        display: flex; align-items: center; gap: 3px; white-space: nowrap;
-        /* iPad: タップ領域を確保 */
-        min-height: 36px;
-    }
-    .sl-btn:active { transform: scale(0.93); }
-    .sl-btn.save-btn  { border-color: #3498db; color: #3498db; }
-    .sl-btn.save-btn:active  { background: #eaf4fd; }
-    .sl-btn.title-btn { border-color: #9b59b6; color: #9b59b6; }
-    .sl-btn.title-btn:active { background: #f5eef8; }
-    .sl-btn.reset-btn { border-color: #e74c3c; color: #e74c3c; }
-    .sl-btn.reset-btn:active { background: #fdedec; }
-    .sl-btn.zukan-btn { border-color: #f39c12; color: #f39c12; }
-    .sl-btn.zukan-btn:active { background: #fef9e7; }
-    .sl-btn.saved {
-        background: #eafaf1 !important; border-color: #2ecc71 !important;
-        color: #27ae60 !important; transition: none;
-    }
+        .zukan-group-title {
+            font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px;
+            text-transform: uppercase; margin: 14px 0 8px; padding-left: 4px;
+        }
+        .zukan-group-title:first-child { margin-top: 0; }
 
-    /* ========================================
-       アニメーション
-    ======================================== */
-    @keyframes popIn {
-        0%   { transform: scale(0) rotate(-10deg); }
-        100% { transform: scale(1); }
-    }
-    @keyframes hatchShake {
-        0%, 100% { transform: translateX(-50%) rotate(0deg); }
-        25%  { transform: translateX(-50%) rotate(-18deg); }
-        75%  { transform: translateX(-50%) rotate(18deg); }
-    }
-    .hatching { animation: hatchShake 0.15s infinite !important; }
-    @keyframes eggIdle {
-        0%, 100% { transform: translateX(-50%) scale(1); }
-        50%  { transform: translateX(-50%) scale(1.06); }
-    }
-    @keyframes chickenPeck {
-        0%, 80%, 100% { transform: rotate(0deg); }
-        85%  { transform: rotate(15deg); }
-        90%  { transform: rotate(-10deg); }
-        95%  { transform: rotate(5deg); }
-    }
-    @keyframes chickenFlap {
-        0%, 90%, 100% { transform: scaleX(1); }
-        92%  { transform: scaleX(1.2) translateY(-2px); }
-        94%  { transform: scaleX(0.9); }
-        96%  { transform: scaleX(1.1); }
-    }
+        .zukan-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; border-radius: 14px; margin-bottom: 6px;
+            background: #f8f9fa; transition: background 0.15s;
+        }
+        .zukan-row.owned        { background: #fff8f0; }
+        .zukan-row.undiscovered { opacity: 0.4; }
 
-    /* ========================================
-       コンボ
-    ======================================== */
-    #combo-area {
-        position: fixed; top: 160px; right: 20px;
-        font-size: 24px; font-weight: bold; color: #e74c3c;
-        opacity: 0; transition: opacity 0.3s, transform 0.3s;
-        text-shadow: 2px 2px 0 #fff; pointer-events: none; z-index: 5;
-    }
-    #combo-area.show { opacity: 1; transform: scale(1.1); }
+        .zukan-emoji { font-size: 34px; width: 40px; text-align: center; flex-shrink: 0; }
+        .zukan-emoji.undiscovered-icon { font-size: 28px; filter: grayscale(1); }
 
-    /* EXPポップアップ */
-    .exp-popup {
-        position: fixed; font-size: 20px; font-weight: bold;
-        color: var(--success-color); text-shadow: 2px 2px 0 #fff;
-        pointer-events: none; z-index: 100;
-        animation: expPopupAnim 1s ease-out forwards;
-    }
-    .combo-exp-popup { color: #e74c3c; font-size: 18px; }
-    .wrong-exp-popup { color: #999; font-size: 16px; }
-    @keyframes expPopupAnim {
-        0%   { transform: translateY(0); opacity: 0; }
-        10%  { transform: translateY(-20px); opacity: 1; }
-        80%  { transform: translateY(-30px); opacity: 1; }
-        100% { transform: translateY(-40px); opacity: 0; }
-    }
+        .zukan-info { flex: 1; min-width: 0; }
+        .zukan-name {
+            font-size: 16px; font-weight: bold; color: #333;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .zukan-name.unknown { color: #bbb; }
+        .zukan-stars { font-size: 13px; color: #f1c40f; letter-spacing: 1px; }
 
-    /* ========================================
-       問題エリア — flex-grow で余白を均等に使う
-    ======================================== */
-    #target-area {
-        margin: 8px 0;
-        text-align: center;
-        flex: 1 1 0;           /* 残スペースをすべて使う */
-        min-height: 0;         /* Safari の flex バグ回避 */
-        display: flex; flex-direction: column;
-        justify-content: center; align-items: center;
-        overflow: hidden;
-    }
-    .number-display { font-size: 80px; font-weight: bold; color: #333; margin-bottom: 5px; }
-    #target-frame-container.complete { animation: frameComplete 0.4s ease-out; }
-    @keyframes frameComplete {
-        0%, 100% { transform: scale(1); }
-        50%  { transform: scale(1.15) rotate(5deg); }
-    }
-    .ten-frame {
-        display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-        background-color: var(--cell-border); padding: 6px; border-radius: 12px;
-    }
-    .cell {
-        width: var(--cell-size); height: var(--cell-size);
-        background-color: var(--cell-bg);
-        border-radius: 8px; display: flex; justify-content: center; align-items: center;
-    }
-    .dot {
-        width: var(--dot-size); height: var(--dot-size); border-radius: 50%;
-        background: radial-gradient(circle at 15px 15px, var(--primary-color), var(--primary-dark-color));
-        box-shadow: 0 4px 0 rgba(0,0,0,0.1);
-        transition: opacity 0.3s ease, background 0.3s ease;
-    }
-    .dot.empty        { opacity: 0; }
-    .dot.target-empty { background: var(--cell-bg); border: 4px dashed var(--cell-border); box-shadow: none; }
-    .dot.complete-anim{ background: radial-gradient(circle at 15px 15px, #fff29e, #f1c40f); }
+        .zukan-right { text-align: right; flex-shrink: 0; }
+        .zukan-prob  { font-size: 11px; color: #bbb; margin-bottom: 2px; }
+        .zukan-owned-count { font-size: 14px; font-weight: bold; color: var(--primary-color); }
+        .zukan-owned-count.zero { color: #ccc; }
 
-    /* ========================================
-       選択肢 — flex-shrink: 0 で押し出されないよう固定
-    ======================================== */
-    #choices-area {
-        display: flex; gap: 16px; justify-content: center;
-        padding: 14px;
-        width: 100%;
-        background: rgba(255,255,255,0.7);
-        border-radius: 20px 20px 0 0; border-top: 2px solid #ddd;
-        flex-shrink: 0;
-        /* iPad ホームバー上の余白 */
-        padding-bottom: max(14px, env(safe-area-inset-bottom));
-    }
-    .choice-btn {
-        background-color: #fff; border: 4px solid var(--cell-border);
-        border-radius: 16px; padding: 15px; cursor: pointer;
-        display: flex; flex-direction: column; align-items: center;
-        transition: transform 0.1s, border-color 0.2s, box-shadow 0.2s;
-        box-shadow: 0 6px 0 var(--cell-border);
-        /* iPad: フレキシブルに横幅を取る */
-        flex: 1; max-width: 160px;
-    }
-    .choice-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--cell-border); }
-    .choice-btn.selected-wrong {
-        animation: choiceWrong 0.4s;
-        border-color: #e74c3c !important; box-shadow: 0 6px 0 #e74c3c !important;
-    }
-    .choice-btn.correct-highlight {
-        border-color: #2ecc71 !important; box-shadow: 0 6px 0 #27ae60 !important;
-        background: #eafaf1 !important;
-        animation: correctPulse 0.5s ease-in-out infinite alternate !important;
-    }
-    @keyframes choiceWrong {
-        0%, 100% { transform: translateX(0); }
-        25%  { transform: translateX(-6px); }
-        75%  { transform: translateX(6px); }
-    }
-    @keyframes correctPulse {
-        0%   { transform: scale(1); }
-        100% { transform: scale(1.06); }
-    }
-    .choice-btn .number-display { font-size: 50px; }
-    .choice-btn .ten-frame  { gap: 2px; padding: 2px; border-radius: 4px; border: none; margin-top: 5px; }
-    .choice-btn .cell       { width: var(--cell-sm); height: var(--cell-sm); border-radius: 2px; }
-    .choice-btn .dot        { width: var(--dot-sm); height: var(--dot-sm); }
+        .rarity-1 .zukan-stars { color: #95a5a6; }
+        .rarity-2 .zukan-stars { color: #27ae60; }
+        .rarity-3 .zukan-stars { color: #3498db; }
+        .rarity-4 .zukan-stars { color: #9b59b6; }
 
-    /* 飛翔ドット */
-    .flying-dot {
-        position: fixed; border-radius: 50%;
-        background: radial-gradient(circle at 15px 15px, var(--primary-color), var(--primary-dark-color));
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 100; pointer-events: none;
-    }
+        /* ========================================
+           確認ダイアログ
+        ======================================== */
+        #confirm-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 950; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        #confirm-overlay.show { opacity: 1; pointer-events: all; }
+        #confirm-card {
+            background: #fff; border-radius: 20px; padding: 24px 20px;
+            width: 88%; max-width: 360px; text-align: center;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+        }
+        #confirm-title   { font-size: 22px; font-weight: bold; color: #333; margin-bottom: 8px; }
+        #confirm-message { font-size: 15px; color: #777; margin-bottom: 20px; line-height: 1.5; }
+        #confirm-buttons { display: flex; gap: 10px; }
+        .confirm-btn {
+            flex: 1; padding: 14px; border: none; border-radius: 14px;
+            font-size: 17px; font-weight: bold; cursor: pointer;
+            transition: transform 0.1s; box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+            /* iPad: タップ領域 */
+            min-height: 50px;
+        }
+        .confirm-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.15); }
+        .confirm-btn.ok     { background: #e74c3c; color: #fff; }
+        .confirm-btn.cancel { background: #ecf0f1; color: #7f8c8d; }
 
-    /* ========================================
-       孵化オーバーレイ
-    ======================================== */
-    #hatch-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: rgba(0,0,0,0.55);
-        z-index: 500; opacity: 0; pointer-events: none; transition: opacity 0.3s;
-    }
-    #hatch-overlay.show    { opacity: 1; pointer-events: all; }
-    #hatch-chicken-display { font-size: 110px; }
-    #hatch-chicken-display.bounce {
-        animation: hatchChickenBounce 0.6s cubic-bezier(0.175,0.885,0.32,1.275) forwards;
-    }
-    #hatch-chicken-name {
-        font-size: 26px; font-weight: bold; color: #fff;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.6); margin-top: 12px;
-    }
-    #hatch-rarity { font-size: 22px; color: #f1c40f; margin-top: 6px; letter-spacing: 4px; }
-    @keyframes hatchChickenBounce {
-        0%   { transform: scale(0) rotate(-20deg); }
-        60%  { transform: scale(1.25) rotate(10deg); }
-        80%  { transform: scale(0.9) rotate(-5deg); }
-        100% { transform: scale(1) rotate(0deg); }
-    }
+        /* ========================================
+           トースト
+        ======================================== */
+        #toast {
+            position: fixed; bottom: calc(90px + env(safe-area-inset-bottom)); left: 50%;
+            transform: translateX(-50%) translateY(16px);
+            background: rgba(30,30,30,0.88); color: #fff;
+            padding: 10px 22px; border-radius: 22px;
+            font-size: 15px; font-weight: bold;
+            opacity: 0; pointer-events: none; z-index: 800;
+            transition: opacity 0.25s, transform 0.25s;
+            white-space: nowrap;
+        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* 吹き出し */
-    .speech-bubble {
-        position: fixed; background: #fff; border: 2px solid #555;
-        border-radius: 12px; padding: 4px 10px; font-size: 16px;
-        pointer-events: none; z-index: 300;
-        animation: bubbleAnim 1.2s ease-out forwards;
-    }
-    @keyframes bubbleAnim {
-        0%   { transform: translateY(0) scale(0); opacity: 1; }
-        20%  { transform: translateY(-12px) scale(1); opacity: 1; }
-        80%  { transform: translateY(-22px); opacity: 1; }
-        100% { transform: translateY(-32px); opacity: 0; }
-    }
-
-    /* ========================================
-       図鑑オーバーレイ
-    ======================================== */
-    #zukan-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.6);
-        display: flex; align-items: flex-end; justify-content: center;
-        z-index: 850; opacity: 0; pointer-events: none;
-        transition: opacity 0.25s;
-    }
-    #zukan-overlay.show { opacity: 1; pointer-events: all; }
-
-    #zukan-panel {
-        background: #fff; border-radius: 24px 24px 0 0;
-        width: 100%; max-width: 600px; max-height: 85vh;
-        display: flex; flex-direction: column;
-        box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
-        transform: translateY(100%);
-        transition: transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275);
-        /* iPad ホームバー対応 */
-        padding-bottom: env(safe-area-inset-bottom);
-    }
-    #zukan-overlay.show #zukan-panel { transform: translateY(0); }
-
-    #zukan-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 16px 20px 12px; border-bottom: 2px solid #f0f0f0;
-        flex-shrink: 0;
-    }
-    #zukan-title { font-size: 20px; font-weight: bold; color: #333; }
-    #zukan-count { font-size: 13px; color: #999; }
-    #zukan-close {
-        width: 36px; height: 36px; border-radius: 50%;
-        background: #f0f0f0; border: none; cursor: pointer;
-        font-size: 18px; display: flex; align-items: center; justify-content: center;
-        color: #777; transition: background 0.15s;
-    }
-    #zukan-close:active { background: #ddd; }
-
-    #zukan-body { overflow-y: auto; padding: 12px 16px 24px; flex: 1; }
-
-    .zukan-group-title {
-        font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px;
-        text-transform: uppercase; margin: 14px 0 8px; padding-left: 4px;
-    }
-    .zukan-group-title:first-child { margin-top: 0; }
-
-    .zukan-row {
-        display: flex; align-items: center; gap: 12px;
-        padding: 10px 12px; border-radius: 14px; margin-bottom: 6px;
-        background: #f8f9fa; transition: background 0.15s;
-    }
-    .zukan-row.owned        { background: #fff8f0; }
-    .zukan-row.undiscovered { opacity: 0.4; }
-
-    .zukan-emoji { font-size: 34px; width: 40px; text-align: center; flex-shrink: 0; }
-    .zukan-emoji.undiscovered-icon { font-size: 28px; filter: grayscale(1); }
-
-    .zukan-info { flex: 1; min-width: 0; }
-    .zukan-name {
-        font-size: 16px; font-weight: bold; color: #333;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .zukan-name.unknown { color: #bbb; }
-    .zukan-stars { font-size: 13px; color: #f1c40f; letter-spacing: 1px; }
-
-    .zukan-right { text-align: right; flex-shrink: 0; }
-    .zukan-prob  { font-size: 11px; color: #bbb; margin-bottom: 2px; }
-    .zukan-owned-count { font-size: 14px; font-weight: bold; color: var(--primary-color); }
-    .zukan-owned-count.zero { color: #ccc; }
-
-    .rarity-1 .zukan-stars { color: #95a5a6; }
-    .rarity-2 .zukan-stars { color: #27ae60; }
-    .rarity-3 .zukan-stars { color: #3498db; }
-    .rarity-4 .zukan-stars { color: #9b59b6; }
-
-    /* ========================================
-       確認ダイアログ
-    ======================================== */
-    #confirm-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.5);
-        display: flex; align-items: center; justify-content: center;
-        z-index: 950; opacity: 0; pointer-events: none; transition: opacity 0.2s;
-    }
-    #confirm-overlay.show { opacity: 1; pointer-events: all; }
-    #confirm-card {
-        background: #fff; border-radius: 20px; padding: 24px 20px;
-        width: 88%; max-width: 360px; text-align: center;
-        box-shadow: 0 16px 48px rgba(0,0,0,0.3);
-    }
-    #confirm-title   { font-size: 22px; font-weight: bold; color: #333; margin-bottom: 8px; }
-    #confirm-message { font-size: 15px; color: #777; margin-bottom: 20px; line-height: 1.5; }
-    #confirm-buttons { display: flex; gap: 10px; }
-    .confirm-btn {
-        flex: 1; padding: 14px; border: none; border-radius: 14px;
-        font-size: 17px; font-weight: bold; cursor: pointer;
-        transition: transform 0.1s; box-shadow: 0 4px 0 rgba(0,0,0,0.15);
-        /* iPad: タップ領域 */
-        min-height: 50px;
-    }
-    .confirm-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.15); }
-    .confirm-btn.ok     { background: #e74c3c; color: #fff; }
-    .confirm-btn.cancel { background: #ecf0f1; color: #7f8c8d; }
-
-    /* ========================================
-       トースト
-    ======================================== */
-    #toast {
-        position: fixed; bottom: calc(90px + env(safe-area-inset-bottom)); left: 50%;
-        transform: translateX(-50%) translateY(16px);
-        background: rgba(30,30,30,0.88); color: #fff;
-        padding: 10px 22px; border-radius: 22px;
-        font-size: 15px; font-weight: bold;
-        opacity: 0; pointer-events: none; z-index: 800;
-        transition: opacity 0.25s, transform 0.25s;
-        white-space: nowrap;
-    }
-    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    #controls {
-        position: fixed; bottom: 5px; left: 5px;
-        font-size: 10px; color: #999; opacity: 0.1;
-    }
-</style>
-```
-
+        #controls {
+            position: fixed; bottom: 5px; left: 5px;
+            font-size: 10px; color: #999; opacity: 0.1;
+        }
+    </style>
 </head>
 <body>
 
 <!-- ========== 横向きロック ========== -->
-
 <div id="rotate-overlay">
     <div class="rotate-icon">📱</div>
     <div class="rotate-text">たてむきにして<br>あそんでね！</div>
 </div>
 
 <!-- ========== スタート画面 ========== -->
-
 <div id="start-screen">
     <div id="start-card">
         <div id="start-eggs">🥚🥚🥚</div>
@@ -655,7 +649,6 @@
 </div>
 
 <!-- ========== メインUI（iPadで中央寄せ） ========== -->
-
 <div id="game-wrapper">
     <div id="status-board">
         <div id="level-exp-area">
@@ -672,21 +665,17 @@
         </div>
     </div>
 
-```
-<div id="combo-area"><span id="combo-count">0</span> コンボ！</div>
+    <div id="combo-area"><span id="combo-count">0</span> コンボ！</div>
 
-<div id="target-area">
-    <div class="number-display" id="target-number"></div>
-    <div id="target-frame-container"></div>
-</div>
+    <div id="target-area">
+        <div class="number-display" id="target-number"></div>
+        <div id="target-frame-container"></div>
+    </div>
 
-<div id="choices-area"></div>
-```
-
+    <div id="choices-area"></div>
 </div><!-- /#game-wrapper -->
 
 <!-- 図鑑オーバーレイ -->
-
 <div id="zukan-overlay">
     <div id="zukan-panel">
         <div id="zukan-header">
@@ -701,7 +690,6 @@
 </div>
 
 <!-- 孵化オーバーレイ -->
-
 <div id="hatch-overlay">
     <div id="hatch-chicken-display">🐔</div>
     <div id="hatch-chicken-name"></div>
@@ -709,7 +697,6 @@
 </div>
 
 <!-- 確認ダイアログ -->
-
 <div id="confirm-overlay">
     <div id="confirm-card">
         <div id="confirm-title"></div>
@@ -722,7 +709,6 @@
 </div>
 
 <!-- トースト -->
-
 <div id="toast"></div>
 
 <div id="controls">
@@ -1386,6 +1372,5 @@
     window.addEventListener('orientationchange',updateRotateOverlay);
 
 </script>
-
 </body>
 </html>
